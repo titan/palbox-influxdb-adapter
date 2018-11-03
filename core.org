@@ -1,0 +1,99 @@
+#+STARTUP: indent
+* 基本框架
+
+Box Influxdb Adapter 用于将 box 设备上报的网络信号数据转发到 influxdb
+数据库中。
+
+Box Influxdb Adapter 从缓存中获取到所有启用设备上报的 rssi 数据，重启
+数据。rssi 数据存放在 rssi.{boxid}.YYYY-mm-DD.HH.MM 下。rssi 数据包含
+了 rssi 和 ber，用逗号分割。重启数据存放在
+reset.{boxid}.YYYY-mm-DD.HH.MM 下。重启数据包含了 shutdown 次数和
+reset 次数，用逗号分割。
+
+#+begin_src nim :exports code :noweb yes :mkdirp yes :tangle /dev/shm/box-influxdb-adapter/src/box_influxdb_adapter.nim
+  import influx, logging, md5, redis, os, sequtils, sets, strfmt, strutils, tables, times
+
+  var L = newConsoleLogger(fmtStr = "$levelid [$datetime] : ")
+  addHandler(L)
+
+#+end_src
+
+** serve
+
+每分钟进行一次数据检查。
+
+#+begin_src nim :exports code :noweb yes :mkdirp yes :tangle /dev/shm/box-influxdb-adapter/src/box_influxdb_adapter.nim
+  proc serve() =
+    let
+      redis_client = redis.open()
+      enabled_key = "box.enabled"
+      influxdb = InfluxDB(protocol: HTTP, host: "localhost", port: 8086)
+    while true:
+      let
+        enabled = redis_client.smembers(enabled_key)
+        enabled_set = enabled.toSet()
+      <<scan-minute>>
+      sleep(60000)
+
+  serve()
+#+end_src
+
+** 每分钟扫猫
+
+设备上报数据的基本时间是按分钟记录在缓存中的。设备上的时钟并非和服务上
+的时钟同步，因此有可能在某个时刻，设备既没有掉线，也没有在服务上登记。
+因此必须向前多看一个时间单位的数据，才能正确保存数据。
+
+#+begin_src nim :noweb-ref scan-minute
+  let
+    t0 = local(getTime()) - 1.minutes
+  var
+    rssi_table = initTable[string, string]()
+    reset_table = initTable[string, string]()
+  for boxid in enabled:
+    let name = redis_client.hget("boxes", boxid)
+    rssi_table[boxid & "," & name] = redis_client.get("rssi." & boxid & "."  & t0.year.format("04d") & "-" & (ord(t0.month)).format("02d") & "-" & t0.monthday.format("02d") & "." & t0.hour.format("02d") & "." & t0.minute.format("02d"))
+    reset_table[boxid & "," & name] = redis_client.get("reset." & boxid & "."  & t0.year.format("04d") & "-" & (ord(t0.month)).format("02d") & "-" & t0.monthday.format("02d") & "." & t0.hour.format("02d") & "." & t0.minute.format("02d"))
+  for pair in rssi_table.pairs():
+    let
+      (idstr, rssistr) = pair
+      idpair = idstr.split(',')
+      boxid = idpair[0]
+      name = idpair[1]
+      rssipair = rssistr.split(',')
+      rssi = rssipair[0]
+      ber = rssipair[1]
+      tags = @{
+        "boxid": boxid,
+        "name": name,
+      }.toTable
+      values = @{
+        "rssi": rssi,
+        "ber": ber,
+      }.toTable
+    let data = LineProtocol(measurement: "rssi", tags: tags, fields: values, timestamp: t0.toTime().toUnix() * 1000000000)
+    discard influxdb.write("palbox", @[data])
+  for pair in reset_table.pairs():
+    let
+      (idstr, resetstr) = pair
+      resetpair = resetstr.split(",")
+    if len(resetpair) < 2:
+      continue
+    let
+      idpair = idstr.split(',')
+      boxid = idpair[0]
+      name = idpair[1]
+      shutdown = resetpair[0]
+      reset = resetpair[1]
+      tags = @{
+        "boxid": boxid,
+        "name": name,
+      }.toTable
+      values = @{
+        "shutdown": shutdown,
+        "reset": reset,
+      }.toTable
+    let data = LineProtocol(measurement: "reset", tags: tags, fields: values, timestamp: t0.toTime().toUnix() * 1000000000)
+    discard influxdb.write("palbox", @[data])
+
+#+end_src
