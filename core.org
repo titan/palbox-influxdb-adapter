@@ -27,7 +27,7 @@ reset 次数，用逗号分割。
     let
       redis_client = redis.open()
       enabled_key = "box.enabled"
-      influxdb = InfluxDB(protocol: HTTP, host: "localhost", port: 8086)
+      influxdb = InfluxDB(protocol: HTTP, host: "127.0.0.1", port: 8086, username: "palbox", password: "xiaobangongxiang123456")
     while true:
       let
         enabled = redis_client.smembers(enabled_key)
@@ -57,10 +57,13 @@ reset 次数，用逗号分割。
   for pair in rssi_table.pairs():
     let
       (idstr, rssistr) = pair
+      rssipair = rssistr.split(',')
+    if len(rssipair) < 2:
+      continue
+    let
       idpair = idstr.split(',')
       boxid = idpair[0]
       name = idpair[1]
-      rssipair = rssistr.split(',')
       rssi = rssipair[0]
       ber = rssipair[1]
       tags = @{

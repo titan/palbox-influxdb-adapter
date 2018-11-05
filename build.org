@@ -34,7 +34,7 @@
 
 启动脚本基于 supervisor 来编写
 
-#+begin_src conf :exports code :noweb yes :mkdirp yes :tangle /dev/shm/box-influxdb-adapter/box_influxdb_adapter.ini
+#+begin_src conf :exports code :noweb yes :mkdirp yes :tangle /dev/shm/box-influxdb-adapter/box-influxdb-adapter.ini
   [program:box-influxdb-adapter]
   command=/opt/box-influxdb-adapter/box_influxdb_adapter
   directory=/opt/box-influxdb-adapter/
