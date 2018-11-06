@@ -11,7 +11,7 @@ reset.{boxid}.YYYY-mm-DD.HH.MM 下。重启数据包含了 shutdown 次数和
 reset 次数，用逗号分割。
 
 #+begin_src nim :exports code :noweb yes :mkdirp yes :tangle /dev/shm/box-influxdb-adapter/src/box_influxdb_adapter.nim
-  import influx, logging, md5, redis, os, sequtils, sets, strfmt, strutils, tables, times
+  import influx, json, logging, redis, os, sequtils, strfmt, strutils, tables, times
 
   var L = newConsoleLogger(fmtStr = "$levelid [$datetime] : ")
   addHandler(L)
@@ -27,11 +27,10 @@ reset 次数，用逗号分割。
     let
       redis_client = redis.open()
       enabled_key = "box.enabled"
-      influxdb = InfluxDB(protocol: HTTP, host: "127.0.0.1", port: 8086, username: "palbox", password: "xiaobangongxiang123456")
+      influxdb = InfluxDB(protocol: HTTP, host: "127.0.0.1", port: 8086, username: "palbox", password: "xiaobangongxiang123456", debugMode: false)
     while true:
       let
         enabled = redis_client.smembers(enabled_key)
-        enabled_set = enabled.toSet()
       <<scan-minute>>
       sleep(60000)
 
@@ -71,10 +70,10 @@ reset 次数，用逗号分割。
         "name": name,
       }.toTable
       values = @{
-        "rssi": rssi,
-        "ber": ber,
+        "rssi": rssi.parseInt(),
+        "ber": ber.parseInt(),
       }.toTable
-    let data = LineProtocol(measurement: "rssi", tags: tags, fields: values, timestamp: t0.toTime().toUnix() * 1000000000)
+    let data = LineProtocol[int](measurement: "rssi", tags: tags, fields: values, timestamp: t0.toTime().toUnix() * 1000000000)
     discard influxdb.write("palbox", @[data])
   for pair in reset_table.pairs():
     let
@@ -93,10 +92,10 @@ reset 次数，用逗号分割。
         "name": name,
       }.toTable
       values = @{
-        "shutdown": shutdown,
-        "reset": reset,
+        "shutdown": shutdown.parseInt(),
+        "reset": reset.parseInt(),
       }.toTable
-    let data = LineProtocol(measurement: "reset", tags: tags, fields: values, timestamp: t0.toTime().toUnix() * 1000000000)
+    let data = LineProtocol[int](measurement: "reset", tags: tags, fields: values, timestamp: t0.toTime().toUnix() * 1000000000)
     discard influxdb.write("palbox", @[data])
 
 #+end_src
