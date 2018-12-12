@@ -11,7 +11,7 @@ reset.{boxid}.YYYY-mm-DD.HH.MM 下。重启数据包含了 shutdown 次数和
 reset 次数，用逗号分割。
 
 #+begin_src nim :exports code :noweb yes :mkdirp yes :tangle /dev/shm/box-influxdb-adapter/src/box_influxdb_adapter.nim
-  import influx, json, logging, redis, os, sequtils, strfmt, strutils, tables, times
+  import httpclient, influx, logging, redis, os, sequtils, strfmt, strutils, tables, times
 
   var L = newConsoleLogger(fmtStr = "$levelid [$datetime] : ")
   addHandler(L)
@@ -27,12 +27,12 @@ reset 次数，用逗号分割。
     let
       redis_client = redis.open()
       enabled_key = "box.enabled"
-      influxdb = InfluxDB(protocol: HTTP, host: "127.0.0.1", port: 8086, username: "palbox", password: "xiaobangongxiang123456", debugMode: false)
+      influxdb: InfluxDB = InfluxDB(protocol: HTTP, host: "127.0.0.1", port: 8086, username: "username", password: "password", debugMode: false, connection: newHttpClient())
     while true:
       let
         enabled = redis_client.smembers(enabled_key)
       <<scan-minute>>
-      sleep(60000)
+      sleep(30000)
 
   serve()
 #+end_src
